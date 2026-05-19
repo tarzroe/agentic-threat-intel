@@ -1,35 +1,36 @@
 import os
 import threading
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from backend import models, database
 from backend.database import get_db
 from backend.worker import run_osint_task
 from backend.agents import run_agent_workflow
 from pydantic import BaseModel
-from passlib.context import CryptContext
 
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="Agentic Threat Intel API")
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 HF_MODE = os.getenv("HF_MODE", "").lower() == "true"
 
-class UserCreate(BaseModel):
-    username: str
-    password: str
+# ─── AUTO-CREATE DEMO USER ON STARTUP ───
+def ensure_demo_user():
+    from backend.database import SessionLocal
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.username == "demo").first()
+        if not user:
+            user = models.User(username="demo", hashed_password="demo")
+            db.add(user)
+            db.commit()
+    finally:
+        db.close()
+
+ensure_demo_user()
 
 class QueryRequest(BaseModel):
-    username: str
     query: str
-
-class ReportResponse(BaseModel):
-    id: int
-    query: str
-    status: str
-    findings: str | None
 
 def run_osint_sync(report_id: int, query: str):
     from backend.database import SessionLocal
@@ -61,30 +62,11 @@ def run_osint_sync(report_id: int, query: str):
     finally:
         db.close()
 
-@app.post("/api/v1/signup")
-def signup(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    hashed_password = pwd_context.hash(user.password)
-    new_user = models.User(username=user.username, hashed_password=hashed_password)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return {"message": "User created successfully"}
-
-@app.post("/api/v1/login")
-def login(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if not db_user or not pwd_context.verify(user.password, db_user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"message": "Login successful", "username": db_user.username}
-
-@app.post("/api/v1/run_osint", response_model=ReportResponse)
+@app.post("/api/v1/run_osint")
 def run_osint(req: QueryRequest, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.username == req.username).first()
+    user = db.query(models.User).filter(models.User.username == "demo").first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=500, detail="Demo user not found")
 
     new_report = models.OSINTReport(user_id=user.id, query=req.query)
     db.add(new_report)
@@ -98,12 +80,12 @@ def run_osint(req: QueryRequest, db: Session = Depends(get_db)):
         new_report.task_id = task.id
         db.commit()
 
-    return new_report
+    return {"id": new_report.id, "query": new_report.query, "status": new_report.status, "findings": new_report.findings}
 
-@app.get("/api/v1/reports/{username}")
-def get_reports(username: str, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.username == username).first()
+@app.get("/api/v1/reports")
+def get_reports(db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == "demo").first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=500, detail="Demo user not found")
     reports = db.query(models.OSINTReport).filter(models.OSINTReport.user_id == user.id).order_by(models.OSINTReport.created_at.desc()).all()
     return reports
