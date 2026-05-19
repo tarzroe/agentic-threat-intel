@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+streamlit
+celery
+redis
+sqlalchemy
+passlib[bcrypt]
+bcrypt==4.0.1
+google-generativeai
+tavily-python
+psycopg2-binary
+python-dotenv
+requests
