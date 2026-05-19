@@ -1,6 +1,7 @@
 import os
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -73,7 +74,20 @@ def run_agent_workflow(report_id: int, query: str, db_session=None) -> str:
         update_phase("reporting")
         state = reporter_node(state)
         update_phase("completed")
-        return state.get("final_report") or state.get("report", "No report generated.")
+        report = state.get("final_report") or state.get("report", "No report generated.")
+        save_report_to_disk(report_id, query, report)
+        return report
     else:
         update_phase("failed")
         return "Failed to verify threat indicators across multiple sources after maximum retries."
+
+def save_report_to_disk(report_id: int, query: str, report_text: str):
+    basedir = Path(__file__).resolve().parent.parent
+    reports_dir = basedir / "reports"
+    reports_dir.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_query = "".join(c if c.isalnum() or c in " -_" else "_" for c in query)[:60]
+    filename = f"{ts}_{report_id}_{safe_query}.md"
+    filepath = reports_dir / filename
+    content = f"# Threat Intelligence Report\n\n**Report ID:** {report_id}\n**Date:** {datetime.now().strftime('%B %d, %Y')}\n**Query:** {query}\n\n---\n\n{report_text}\n"
+    filepath.write_text(content, encoding="utf-8")

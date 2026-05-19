@@ -29,6 +29,21 @@ def ensure_demo_user():
 
 ensure_demo_user()
 
+# ─── EXPORT EXISTING REPORTS TO DISK ───
+def export_existing_reports():
+    from backend.database import SessionLocal
+    from backend.agents import save_report_to_disk
+    db = SessionLocal()
+    try:
+        reports = db.query(models.OSINTReport).filter(models.OSINTReport.status.in_(["completed", "failed"])).all()
+        for r in reports:
+            if r.findings:
+                save_report_to_disk(r.id, r.query, r.findings)
+    finally:
+        db.close()
+
+export_existing_reports()
+
 class QueryRequest(BaseModel):
     query: str
 
