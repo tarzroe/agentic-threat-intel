@@ -481,8 +481,8 @@ else:
                                         break
                             else:
                                 st.error(f"Failed to start: {res.text}")
-                    except Exception as e:
-                        st.error(f"Connection error: {e}")
+                except Exception as e:
+                    st.error(f"Connection error: {e}")
         else:
             st.warning("Please enter a query.")
 
